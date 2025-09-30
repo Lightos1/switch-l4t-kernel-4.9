@@ -3,7 +3,7 @@
  * serial driver for Nintendo Switch Joy-Cons
  *
  * Copyright (c) 2019-2020 Daniel J. Ogorchock <djogorchock@gmail.com>
- * Copyright (c) 2021-2023 CTCaer <ctcaer@gmail.com>
+ * Copyright (c) 2021-2024 CTCaer <ctcaer@gmail.com>
  *
  * The following resources/projects were referenced for this driver:
  *   https://github.com/dekuNukem/Nintendo_Switch_Reverse_Engineering
@@ -1667,7 +1667,8 @@ static int joycon_set_baudrate(struct joycon_ctlr *ctlr, unsigned int speed)
 	struct tty_struct *tty = serport->tty;
 	struct ktermios ktermios = tty->termios;
 
-	int ret;
+	ktermios.c_cflag &= ~CBAUD;
+	tty_termios_encode_baud_rate(&ktermios, speed, speed);
 
 	/* Manually clear/set dual STOP bit depending on baudrate */
 	if (speed != JC_UART_BAUD_HIGH)
@@ -1677,9 +1678,7 @@ static int joycon_set_baudrate(struct joycon_ctlr *ctlr, unsigned int speed)
 
 	tty_set_termios(tty, &ktermios);
 
-	ret = serdev_device_set_baudrate(ctlr->sdev, speed);
-
-	return ret;
+	return speed;
 }
 
 static irqreturn_t joycon_detection_irq(int irq, void *dev_id)
@@ -2599,7 +2598,9 @@ static int joycon_read_mac(struct joycon_ctlr *ctlr)
 
 	packet = (struct joycon_uart_packet *) ctlr->input_buf;
 	if (packet->header_data[0] != JC_INIT_MAC) {
-		dev_err(&ctlr->sdev->dev, "Invalid response to MAC request\n");
+		dev_err(&ctlr->sdev->dev,
+			"Invalid response to MAC request; val=0x%02x\n",
+			packet->header_data[0]);
 		return -EINVAL;
 	}
 
@@ -2607,8 +2608,8 @@ static int joycon_read_mac(struct joycon_ctlr *ctlr)
 		ctlr->mac_addr[i] = packet->data[j];
 
 	/*
-	 * Regular controller returns 0x01.
-	 * HORI returns 0x22 or 0x21.
+	 * Regular controller returns 0x01/0x02.
+	 * HORI returns 0x21/0x22.
 	 * If that is not enough we can also check:
 	 *  mac == 00:00:00:00:00:00
 	 */
@@ -2637,13 +2638,14 @@ static int joycon_read_mac(struct joycon_ctlr *ctlr)
 	if (!ctlr->mac_addr_str)
 		return -ENOMEM;
 
-	dev_info(&ctlr->sdev->dev, "Joy-con MAC = %s\n", ctlr->mac_addr_str);
+	dev_info(&ctlr->sdev->dev, "Type = 0x%02X, MAC = %s\n", packet->data[0],
+		 ctlr->mac_addr_str);
 
 	return 0;
 }
 
 /* Configures the Joy-con to use 3000000bps */
-static int joycon_change_baud(struct joycon_ctlr *ctlr)
+static int joycon_increase_baudrate(struct joycon_ctlr *ctlr)
 {
 	int ret;
 	u8 hdata[] = {JC_INIT_SET_BAUDRATE, 0x08, 0x00, 0x00, 0xBD};
@@ -2768,7 +2770,7 @@ static int joycon_handshake(struct joycon_ctlr *ctlr)
 
 	if (!ctlr->is_hori) {
 		/* Set higher baudrate */
-		ret = joycon_change_baud(ctlr);
+		ret = joycon_increase_baudrate(ctlr);
 		if (ret)
 			goto exit_restore_baud;
 
@@ -3011,6 +3013,17 @@ retry:
 			   msecs_to_jiffies(!ctlr->is_sio ? 100 : 500));
 }
 
+static inline bool joycon_uart_magic_valid(u8 *magic)
+{
+	if (magic[0] == JC_UART_MAGIC_RX_0 &&
+	    magic[1] == JC_UART_MAGIC_RX_1 &&
+	    magic[2] == JC_UART_MAGIC_RX_2) {
+		return true;
+	}
+
+	return false;
+}
+
 static int joycon_serdev_receive_buf(struct serdev_device *serdev,
 				     const unsigned char *buf, size_t len)
 {
@@ -3018,21 +3031,23 @@ static int joycon_serdev_receive_buf(struct serdev_device *serdev,
 	struct joycon_uart_packet *packet = (struct joycon_uart_packet *) buf;
 	struct device *dev = &ctlr->sdev->dev;
 	struct joycon_input_report *r;
+	size_t packet_len = len;
+	int j;
 
 	dev_dbg(dev, "Received uart data of size=%lu\n", len);
 	/* Check if this is beginning of new packet */
 	if (!ctlr->partial_pkt_len) {
+parse_as_new:
 		/* Obird workaround (they send some zeros in the beginning). */
-		int j = 0;
+		j = 0;
 		while (buf[j] == 0 && j < len)
 			j++;
 		packet = (struct joycon_uart_packet *) (buf + j);
+		packet_len = len-j;
 
 		/* Have we received the entire packet? */
 		if (len-j >= 4 && packet->size + 5 <= len-j) {
-			if (packet->magic[0] != JC_UART_MAGIC_RX_0 ||
-			    packet->magic[1] != JC_UART_MAGIC_RX_1 ||
-			    packet->magic[2] != JC_UART_MAGIC_RX_2) {
+			if (!joycon_uart_magic_valid(packet->magic)) {
 				/* Toss out this packet if the magic is wrong */
 				dev_warn(dev, "Received pkt has wrong magic\n");
 				return len;
@@ -3050,6 +3065,13 @@ static int joycon_serdev_receive_buf(struct serdev_device *serdev,
 			return len;
 		}
 	} else {
+		/*! NOTE: Account for Obird? */
+		if (joycon_uart_magic_valid(packet->magic)) {
+			dev_dbg(dev, "Partial pkt lost. Parse as new one.\n");
+			ctlr->partial_pkt_len = 0;
+			goto parse_as_new;
+		}
+
 		if (ctlr->partial_pkt_len + len > JC_MAX_UART_PKT_SIZE) {
 			dev_warn(dev, "Packet length too large; ignoring\n");
 			ctlr->partial_pkt_len = 0;
@@ -3063,11 +3085,10 @@ static int joycon_serdev_receive_buf(struct serdev_device *serdev,
 			return len;
 
 		packet = (struct joycon_uart_packet *) ctlr->partial_pkt;
+		packet_len = ctlr->partial_pkt_len;
 		if (packet->size + 5 <= ctlr->partial_pkt_len) {
 			ctlr->partial_pkt_len = 0;
-			if (packet->magic[0] != JC_UART_MAGIC_RX_0 ||
-			    packet->magic[1] != JC_UART_MAGIC_RX_1 ||
-			    packet->magic[2] != JC_UART_MAGIC_RX_2) {
+			if (!joycon_uart_magic_valid(packet->magic)) {
 				/* Toss out this packet if the magic is wrong */
 				dev_warn(dev, "Received pkt has wrong magic\n");
 				return len;
@@ -3088,8 +3109,9 @@ static int joycon_serdev_receive_buf(struct serdev_device *serdev,
 		switch (ctlr->msg_type) {
 		case JOYCON_MSG_TYPE_UART_CMD:
 			if (packet->command == ctlr->uart_cmd_match) {
-				memcpy(ctlr->input_buf, buf,
-				       min(len, (size_t)JC_MAX_RESP_SIZE));
+				memcpy(ctlr->input_buf, packet,
+				       min(packet_len,
+					   (size_t)JC_MAX_RESP_SIZE));
 				ctlr->msg_type = JOYCON_MSG_TYPE_NONE;
 				ctlr->received_resp = true;
 				wake_up(&ctlr->wait);
@@ -3103,7 +3125,7 @@ static int joycon_serdev_receive_buf(struct serdev_device *serdev,
 				if (r->reply.id != ctlr->subcmd_ack_match)
 					break;
 				memcpy(ctlr->input_buf, (u8 *)r,
-				       min(len - sizeof(*packet),
+				       min(packet_len - sizeof(*packet),
 					   (size_t)JC_MAX_RESP_SIZE));
 				ctlr->msg_type = JOYCON_MSG_TYPE_NONE;
 				ctlr->received_resp = true;
@@ -3144,6 +3166,7 @@ static int sio_serdev_receive_buf(struct serdev_device *serdev,
 	struct joycon_ctlr *ctlr = serdev_device_get_drvdata(serdev);
 	struct sio_uart_packet *packet = (struct sio_uart_packet *) buf;
 	struct device *dev = &ctlr->sdev->dev;
+	size_t packet_len = len;
 	u8 subcmd = 0;
 
 	dev_dbg(dev, "Received uart data of size=%lu\n", len);
@@ -3187,6 +3210,7 @@ static int sio_serdev_receive_buf(struct serdev_device *serdev,
 			return len;
 
 		packet = (struct sio_uart_packet *) ctlr->partial_pkt;
+		packet_len = ctlr->partial_pkt_len;
 		if (packet->payload_len + 8 <= ctlr->partial_pkt_len) {
 			ctlr->partial_pkt_len = 0;
 			if (packet->cmd != JC_SIO_INPUT_RPT) {
@@ -3198,7 +3222,7 @@ static int sio_serdev_receive_buf(struct serdev_device *serdev,
 			dev_dbg(dev, "Finished receiving uart packet\n");
 		} else {
 			/* Packet still in progress */
-			dev_dbg(dev, "rx of packet still in progres\n");
+			dev_dbg(dev, "rx of packet still in progress\n");
 			return len;
 		}
 	}
@@ -3211,8 +3235,9 @@ static int sio_serdev_receive_buf(struct serdev_device *serdev,
 		case JOYCON_MSG_TYPE_UART_CMD:
 			if (packet->subcmd == ctlr->uart_cmd_match &&
 			    packet->data[0] == JC_SIO_STATUS_OK) {
-				memcpy(ctlr->input_buf, buf,
-				       min(len, (size_t)JC_SIO_MAX_RESP_SIZE));
+				memcpy(ctlr->input_buf, packet,
+				       min(packet_len,
+					   (size_t)JC_SIO_MAX_RESP_SIZE));
 				ctlr->msg_type = JOYCON_MSG_TYPE_NONE;
 				ctlr->received_resp = true;
 				wake_up(&ctlr->wait);
@@ -3346,15 +3371,15 @@ static int joycon_serdev_probe(struct serdev_device *serdev)
 						 "sio-stick-cal-r",
 						 calibration, 6);
 		if (!ret) {
+			ctlr->right_stick_cal_x.center = calibration[1];
+			ctlr->right_stick_cal_y.center = calibration[4];
+
 			if (!of_property_read_u32_array(dev->of_node,
 						 "sio-stick-cnt-off-r",
 						  cal_center_offset, 2)) {
 				ctlr->right_stick_cal_x.center += (s32)cal_center_offset[0];
 				ctlr->right_stick_cal_y.center += (s32)cal_center_offset[1];
 			}
-
-			ctlr->right_stick_cal_x.center = calibration[1];
-			ctlr->right_stick_cal_y.center = calibration[4];
 
 			ctlr->right_stick_cal_x.min = ctlr->right_stick_cal_x.center - calibration[2];
 			ctlr->right_stick_cal_x.max = ctlr->right_stick_cal_x.center + calibration[0];
