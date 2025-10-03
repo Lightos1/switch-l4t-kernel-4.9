@@ -2,7 +2,7 @@
  * clk-dfll.c - Tegra DFLL clock source common code
  *
  * Copyright (C) 2012-2018 NVIDIA Corporation. All rights reserved.
- * Copyright (c) 2021, CTCaer
+ * Copyright (c) 2021-2023, CTCaer
  *
  * Aleksandr Frid <afrid@nvidia.com>
  * Paul Walmsley <pwalmsley@nvidia.com>
@@ -205,7 +205,8 @@
  */
 
 /* MAX_DFLL_VOLTAGES: number of LUT entries in the DFLL IP block */
-#define MAX_DFLL_VOLTAGES		33
+#define MAX_DFLL_VOLTAGES		64
+#define MIN_DFLL_VOLTAGES		33
 
 /*
  * REF_CLK_CYC_PER_DVCO_SAMPLE: the number of ref_clk cycles that the hardware
@@ -404,6 +405,7 @@ struct tegra_dfll {
 	unsigned			lut[MAX_DFLL_VOLTAGES];
 	unsigned			lut_uv[MAX_DFLL_VOLTAGES];
 	int				lut_size;
+	int				lut_size_max;
 	u8				lut_bottom, lut_min, lut_max, lut_safe;
 	u8				lut_force_min;
 
@@ -966,7 +968,7 @@ static void set_dvco_rate_min(struct tegra_dfll *td, struct dfll_rate_req *req)
 {
 	unsigned long rate;
 	unsigned long tune_high_range_min = 0;
-	unsigned long range = 32 * (td->ref_rate / 2);
+	unsigned long range = (td->lut_size_max - 1) * (td->ref_rate / 2);
 
 	rate = td->dvco_rate_floors[td->thermal_floor_index];
 	if (!rate) {
@@ -1622,7 +1624,7 @@ static void dfll_load_i2c_lut(struct tegra_dfll *td)
 	int i, lut_index;
 	u32 val;
 
-	for (i = 0; i < MAX_DFLL_VOLTAGES; i++) {
+	for (i = 0; i < td->lut_size_max; i++) {
 		if (i < td->lut_bottom)
 			lut_index = td->lut_bottom;
 		else if (i > td->lut_size - 1)
@@ -2702,7 +2704,7 @@ static void dfll_set_default_params(struct tegra_dfll *td)
 {
 	u32 val;
 
-	val = DIV_ROUND_UP(td->ref_rate, td->sample_rate * 32);
+	val = DIV_ROUND_UP(td->ref_rate, td->sample_rate * DFLL_CONFIG_DIV_PRESCALE);
 	BUG_ON(val > DFLL_CONFIG_DIV_MASK);
 	dfll_writel(td, val, DFLL_CONFIG);
 
@@ -2954,10 +2956,10 @@ static int dfll_build_lut_pwm(struct tegra_dfll *td, int v_max)
 {
 	int i, reg_volt;
 	unsigned long rate;
-	u8 lut_bottom = MAX_DFLL_VOLTAGES;
+	u8 lut_bottom = td->lut_size_max;
 	int v_min = td->soc->min_millivolts * 1000;
 
-	for (i = 0; i < MAX_DFLL_VOLTAGES; i++) {
+	for (i = 0; i < td->lut_size_max; i++) {
 		reg_volt = td->lut_uv[i];
 
 		/* since opp voltage is exact mv */
@@ -2966,13 +2968,13 @@ static int dfll_build_lut_pwm(struct tegra_dfll *td, int v_max)
 			break;
 
 		td->lut[i] = i;
-		if ((lut_bottom == MAX_DFLL_VOLTAGES) && (reg_volt >= v_min))
+		if ((lut_bottom == td->lut_size_max) && (reg_volt >= v_min))
 			lut_bottom = i;
 	}
 
 	/* determine voltage boundaries */
 	td->lut_size = i;
-	if ((lut_bottom == MAX_DFLL_VOLTAGES) ||
+	if ((lut_bottom == td->lut_size_max) ||
 	    (lut_bottom + 1 >= td->lut_size)) {
 		dev_err(td->dev, "no voltage above DFLL minimum %d mV\n",
 			td->soc->min_millivolts);
@@ -3040,7 +3042,7 @@ static int dfll_build_i2c_lut(struct tegra_dfll *td, int v_max)
 			td->out_rate_max = rate;
 
 		for (;;) {
-			v += max(1, (v_max - v) / (MAX_DFLL_VOLTAGES - j));
+			v += max(1, (v_max - v) / (td->lut_size_max - j));
 			if (v >= v_opp)
 				break;
 
@@ -3051,7 +3053,7 @@ static int dfll_build_i2c_lut(struct tegra_dfll *td, int v_max)
 				td->lut[j++] = selector;
 		}
 
-		v = (j == MAX_DFLL_VOLTAGES - 1) ? v_max : v_opp;
+		v = (j == td->lut_size_max - 1) ? v_max : v_opp;
 		selector = find_vdd_map_entry_exact(td, v);
 		if (selector < 0)
 			goto out;
@@ -3185,6 +3187,78 @@ static int enable_set(void *data, u64 val)
 	return val ? dfll_enable(td) : dfll_disable(td);
 }
 DEFINE_SIMPLE_ATTRIBUTE(enable_fops, enable_get, enable_set, "%llu\n");
+
+static int tune0_low_get(void *data, u64 *val)
+{
+	struct tegra_dfll *td = data;
+
+	*val = td->soc->tune0_low;
+
+	return 0;
+}
+static int tune0_low_set(void *data, u64 val)
+{
+	struct tegra_dfll *td = data;
+
+	td->soc->tune0_low = val;
+
+	return 0;
+}
+DEFINE_SIMPLE_ATTRIBUTE(tune0_low_fops, tune0_low_get, tune0_low_set, "%llX\n");
+
+static int tune1_low_get(void *data, u64 *val)
+{
+	struct tegra_dfll *td = data;
+
+	*val = td->soc->tune1_low;
+
+	return 0;
+}
+static int tune1_low_set(void *data, u64 val)
+{
+	struct tegra_dfll *td = data;
+
+	td->soc->tune1_low = val;
+
+	return 0;
+}
+DEFINE_SIMPLE_ATTRIBUTE(tune1_low_fops, tune1_low_get, tune1_low_set, "%llX\n");
+
+static int tune0_high_get(void *data, u64 *val)
+{
+	struct tegra_dfll *td = data;
+
+	*val = td->soc->tune0_high;
+
+	return 0;
+}
+static int tune0_high_set(void *data, u64 val)
+{
+	struct tegra_dfll *td = data;
+
+	td->soc->tune0_high = val;
+
+	return 0;
+}
+DEFINE_SIMPLE_ATTRIBUTE(tune0_high_fops, tune0_high_get, tune0_high_set, "%llX\n");
+
+static int tune1_high_get(void *data, u64 *val)
+{
+	struct tegra_dfll *td = data;
+
+	*val = td->soc->tune1_high;
+
+	return 0;
+}
+static int tune1_high_set(void *data, u64 val)
+{
+	struct tegra_dfll *td = data;
+
+	td->soc->tune1_high = val;
+
+	return 0;
+}
+DEFINE_SIMPLE_ATTRIBUTE(tune1_high_fops, tune1_high_get, tune1_high_set, "%llX\n");
 
 static int lock_get(void *data, u64 *val)
 {
@@ -3501,7 +3575,7 @@ static int registers_show(struct seq_file *s, void *data)
 			   __raw_readl(td->i2c_controller_base + offs));
 
 		seq_puts(s, "\nLUT:\n");
-		for (offs = 0; offs <  4 * MAX_DFLL_VOLTAGES; offs += 4)
+		for (offs = 0; offs <  4 * td->lut_size_max; offs += 4)
 			seq_printf(s, "[0x%02x] = 0x%08x\n", offs,
 				   __raw_readl(td->lut_base + offs));
 	}
@@ -3637,6 +3711,10 @@ static struct {
 	const struct file_operations	*fops;
 } dfll_debugfs_nodes[] = {
 	{ "enable", S_IRUGO | S_IWUSR, &enable_fops },
+	{ "tune0_low", S_IRUGO | S_IWUSR, &tune0_low_fops },
+	{ "tune1_low", S_IRUGO | S_IWUSR, &tune1_low_fops },
+	{ "tune0_high", S_IRUGO | S_IWUSR, &tune0_high_fops },
+	{ "tune1_high", S_IRUGO | S_IWUSR, &tune1_high_fops },
 	{ "lock", S_IRUGO | S_IWUSR, &lock_fops },
 	{ "force_out_mv", S_IRUGO | S_IWUSR, &fout_mv_fops },
 	{ "external_floor_mv", S_IRUGO | S_IWUSR,
@@ -3767,7 +3845,7 @@ static int dfll_fetch_pwm_params(struct tegra_dfll *td)
 		dev_err(td->dev, "Missing step or alignment info for PWM regulator");
 		return -EINVAL;
 	}
-	for (i = 0; i < MAX_DFLL_VOLTAGES; i++)
+	for (i = 0; i < td->lut_size_max; i++)
 		td->lut_uv[i] = td->soc->alignment.offset_uv +
 				i * td->soc->alignment.step_uv;
 
@@ -3782,7 +3860,7 @@ static int dfll_fetch_pwm_params(struct tegra_dfll *td)
 		dev_err(td->dev, "couldn't get PWM period\n");
 		return ret;
 	}
-	td->pwm_rate = (NSEC_PER_SEC / pwm_period) * (MAX_DFLL_VOLTAGES - 1);
+	td->pwm_rate = (NSEC_PER_SEC / pwm_period) * (td->lut_size_max - 1);
 
 	td->pwm_pin = devm_pinctrl_get(td->dev);
 	if (IS_ERR(td->pwm_pin)) {
@@ -3842,6 +3920,11 @@ static int dfll_fetch_common_params(struct tegra_dfll *td)
 	td->one_shot_settle_time = DFLL_ONE_SHOT_SETTLE_TIME;
 	of_property_read_u32(dn, "nvidia,one-shot-settle-time",
 			     &td->one_shot_settle_time);
+
+	of_property_read_u32(dn, "nvidia,lut-max-size", &td->lut_size_max);
+		/* Set LUT max as odd number */
+	td->lut_size_max = clamp(td->lut_size_max, MIN_DFLL_VOLTAGES,
+				 MAX_DFLL_VOLTAGES);
 
 	if (of_property_read_string(dn, "clock-output-names",
 				    &td->output_clock_name)) {
