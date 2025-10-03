@@ -3,7 +3,7 @@
  *
  * Copyright (C) 2012-2014 NVIDIA Corporation.  All rights reserved.
  * Copyright (c) 2021-2023, CTCaer
- * Copyright (c) 2024-2025, Meha
+ * Copyright (c) 2024-2025, hanai3Bi
  *
  * Aleksandr Frid <afrid@nvidia.com>
  * Paul Walmsley <pwalmsley@nvidia.com>
