@@ -716,7 +716,7 @@ static struct thermal_tv tegra210b01_thermal_floor_table[] = {
 
 static const struct thermal_tv tegra210b01_thermal_cap_table[] = {
 	{DFLL_THERMAL_CAP_NOCAP / 1000,         INT_MAX},
-	{TEGRA210B01_DFLL_THERMAL_CAP_0 / 1000, 1060},
+	{TEGRA210B01_DFLL_THERMAL_CAP_0 / 1000, 1180},
 	{TEGRA210B01_DFLL_THERMAL_CAP_1 / 1000, 1010},
 };
 
