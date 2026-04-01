@@ -102,10 +102,10 @@ static const unsigned long tegra210_cpu_max_freq_table[] = {
 	[0] = 1912500000UL,
 	[1] = 1912500000UL,
 	[2] = 2218500000UL,
-	[3] = 2091000000UL,
+	[3] = 2295000000UL,
 	[4] = 1632000000UL,
 	[5] = 1912500000UL,
-	[6] = 2014500000UL,
+	[6] = 2295000000UL,
 	[7] = 1734000000UL,
 	[8] = 1683000000UL,
 	[9] = 1555500000UL,
@@ -250,7 +250,9 @@ static const unsigned long tegra210_cpu_max_freq_table[] = {
 		{1785000000UL,	{1225000, 0, 0} }, \
 		{1887000000UL,	{1225000, 0, 0} }, \
 		{1989000000UL,	{1227500, 0, 0} }, \
-		{2091000000UL,	{1256250, 0, 0} }, \
+		{2091000000UL,	{1227500, 0, 0} }, \
+		{2193000000UL,	{1227500, 0, 0} }, \
+		{2295000000UL,	{1256250, 0, 0} }, \
 		{0,           	{      0, 0, 0} }, \
 	}
 
@@ -685,7 +687,7 @@ static struct thermal_tv tegra210_thermal_floor_table[] = {
 
 static const struct thermal_tv tegra210_thermal_cap_table[] = {
 	{DFLL_THERMAL_CAP_NOCAP / 1000,      INT_MAX},
-	{TEGRA210_DFLL_THERMAL_CAP_0 / 1000, 1170},
+	{TEGRA210_DFLL_THERMAL_CAP_0 / 1000, 1210},
 	{TEGRA210_DFLL_THERMAL_CAP_1 / 1000, 1132},
 };
 
