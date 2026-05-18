@@ -3559,7 +3559,7 @@ static __init void tegra210_shared_clk_init(char *sclk_high_clk)
 
 	clk = tegra_clk_register_gbus("gbus", "gpcclk",
 				      TEGRA_SHARED_BUS_RETENTION,
-				      12000000, 1800000000);
+				      12000000, t210b01 ? 1800000000 : 1300000000);
 	clks[TEGRA210_CLK_GBUS] = clk;
 
 	clk = tegra_clk_register_shared_master("host1x_master", "host1x", 0,

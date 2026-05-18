@@ -261,4 +261,31 @@ static struct dvb_dvfs emcb01slt_dvb_dvfs_table[] = {
 	},
 };
 
+static struct dvb_dvfs emcb01slt_dvb_dvfs_table_extreme[] = {
+	{
+		.speedo_id = -1,
+		.freqs_mult = KHZ,
+		.dvb_table = {
+			{  204000, {  600,  600,  600, } },
+			{  408000, {  600,  600,  600, } },
+			{  800000, {  600,  600,  600, } },
+			{ 1065600, {  600,  600,  600, } },
+			{ 1331200, {  650,  600,  600, } },
+			{ 1600000, {  650,  650,  625, } },
+			/* Custom */
+			{ 1866000, {  700,  675,  637, } },
+			{ 2133000, {  725,  700,  650, } },
+			/* Overclocking */
+			{ 2400000, {  750,  725,  675, } },
+			{ 2533000, {  800,  775,  725, } },
+			{ 2666000, {  850,  825,  775, } },
+			{ 2800000, {  925,  850,  800, } },
+			{ 2933000, { 1000,  900,  875, } },
+			{ 3066000, { 1025,  950,  925, } },
+			{ 3200000, { 1050, 1025, 1000, } },
+			{ 0, { } },
+		},
+	},
+};
+
 static const char coreb01slt_dvfs_table_ver[] = "SOC - p4v3-AggressiveSLT SOC_IO - p4v2-AggressiveSLT SOC_EMC- p4v2-AggressiveSLT";

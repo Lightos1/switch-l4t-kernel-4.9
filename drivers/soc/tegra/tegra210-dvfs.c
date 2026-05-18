@@ -74,6 +74,7 @@ struct tegra_dvfs_data {
 
 static struct tegra_dvfs_data *dvfs_data;
 
+static bool extreme_oc;
 static bool tegra_dvfs_cpu_disabled;
 static bool tegra_dvfs_core_disabled;
 static bool tegra_dvfs_gpu_disabled;
@@ -572,6 +573,41 @@ static struct cpu_dvfs cpu_fv_dvfs_table[] = {
 	}, \
 	.pll_min_millivolts = 800
 
+#define CPUB01_PLL_CVB_TABLE_SLT_EXTREME	\
+	.speedo_scale = 100,	\
+	.voltage_scale = 1000,	\
+	.cvb_pll_table = {	\
+		/* f	                c0,       c1,       c2 */   \
+		{  204000000UL, {        0,        0,        0 } }, \
+		{  306000000UL, {        0,        0,        0 } }, \
+		{  408000000UL, {        0,        0,        0 } }, \
+		{  510000000UL, {        0,        0,        0 } }, \
+		{  612000000UL, {        0,        0,        0 } }, \
+		{  714000000UL, {        0,        0,        0 } }, \
+		{  816000000UL, {        0,        0,        0 } }, \
+		{  918000000UL, {        0,        0,        0 } }, \
+		{ 1020000000UL, {  1120000,        0,        0 } }, \
+		{ 1122000000UL, {  1120000,        0,        0 } }, \
+		{ 1224000000UL, {  1120000,        0,        0 } }, \
+		{ 1326000000UL, {  1120000,        0,        0 } }, \
+		{ 1428000000UL, {  1120000,        0,        0 } }, \
+		{ 1581000000UL, {  1120000,        0,        0 } }, \
+		{ 1683000000UL, {  1120000,        0,        0 } }, \
+		{ 1785000000UL, {  1120000,        0,        0 } }, \
+		{ 1887000000UL, {  1120000,        0,        0 } }, \
+		{ 1963500000UL, {  1120000,        0,        0 } }, \
+		{ 2091000000UL, {  1120000,        0,        0 } }, \
+		{ 2193000000UL, {  1235000,        0,        0 } }, \
+		{ 2295000000UL, {  1235000,        0,        0 } }, \
+		{ 2397000000UL, {  1235000,        0,        0 } }, \
+		{ 2499000000UL, {  1235000,        0,        0 } }, \
+		{ 2601000000UL, {  1235000,        0,        0 } }, \
+		{ 2703000000UL, {  1235000,        0,        0 } }, \
+		{ 0,	        { } }, \
+	}, \
+	.pll_min_millivolts = 800
+
+
 #define CPUB01_PLL_CVB_TABLE	\
 	.speedo_scale = 100,	\
 	.voltage_scale = 1000,	\
@@ -619,6 +655,20 @@ static struct cpu_dvfs cpub01_fv_dvfs_table[] = {
 	},
 };
 
+static struct cpu_dvfs cpub01_fv_dvfs_table_extreme[] = {
+	{
+		.speedo_id = 2,
+		.process_id = -1,
+		.max_mv = 1235, /* Allow OC max voltage of 1235 mV from 1120 */
+		CPUB01_PLL_CVB_TABLE_SLT_EXTREME,
+	},
+	{
+		.speedo_id = -1,
+		.process_id = -1,
+		.max_mv = 1235, /* Allow OC max voltage of 1235 mV from 1120 */
+		CPUB01_PLL_CVB_TABLE,
+	},
+};
 
 /* CPU LP DVFS tables */
 static unsigned long cpu_lp_max_freq[] = {
@@ -851,6 +901,35 @@ static struct cvb_dvfs gpu_cvb_dvfs_table[] = {
 	.cvb_vmin = {   0, { }, {   590000,        0,        0 }, }, \
 	.cvb_version = "NAPLL En - p4v2-AggressiveSLT"
 
+#define GPUB01_NA_CVB_TABLE_SLT_EXTREME	\
+	.freqs_mult = KHZ,	\
+	.speedo_scale = 100,	\
+	.thermal_scale = 10,	\
+	.voltage_scale = 1000,	\
+	.cvb_table = {		\
+		/* f	   dfll pll:    c0,       c1,       c2,       c3,       c4,       c5 */    \
+		{   76800, { },  {  590000,        0,        0,        0,        0,        0 }, }, \
+		{  153600, { },  {  590000,        0,        0,        0,        0,        0 }, }, \
+		{  230400, { },  {  590000,        0,        0,        0,        0,        0 }, }, \
+		{  307200, { },  {  590000,        0,        0,        0,        0,        0 }, }, \
+		{  384000, { },  {  590000,        0,        0,        0,        0,        0 }, }, \
+		{  460800, { },  {  590000,        0,        0,        0,        0,        0 }, }, \
+		{  537600, { },  {  590000,        0,        0,        0,        0,        0 }, }, \
+		{  614400, { },  {  590000,        0,        0,        0,        0,        0 }, }, \
+		{  691200, { },  {  838712,    -7304,     -552,      119,    -3750,       -2 }, }, \
+		{  768000, { },  {  880210,    -7955,     -584,        0,    -2849,       39 }, }, \
+		{  844800, { },  {  926398,    -8892,     -602,      -60,     -384,      -93 }, }, \
+		{  921600, { },  {  970060,   -10108,     -614,     -179,     1508,      -13 }, }, \
+		{  998400, { },  { 1060665,   -16075,     -497,     -179,     3213,        9 }, }, \
+		{ 1075200, { },  { 1117576,   -16093,     -648,        0,     1077,       40 }, }, \
+		{ 1152000, { },  { 1094475,   -12688,     -648,        0,     1077,       40 }, }, \
+		{ 1228800, { },  { 1124475,   -12688,     -648,        0,     1077,       40 }, }, \
+		{ 1267200, { },  { 1145060,   -12688,     -648,        0,     1077,       40 }, }, \
+		{ 0,	   { }, { }, }, \
+	}, \
+	.cvb_vmin = {   0, { }, {   590000,        0,        0 }, }, \
+	.cvb_version = "NAPLL En - p4v2-AggressiveSLT"
+
 #define GPUB01_NA_CVB_TABLE	\
 	.freqs_mult = KHZ,	\
 	.speedo_scale = 100,	\
@@ -910,6 +989,36 @@ static struct cvb_dvfs gpu_cvb_dvfs_table[] = {
 	.cvb_vmin = {   0, { }, {   590000,        0,        0 }, }, \
 	.cvb_version = "NAPLL En - p4v2-AggressiveHighOPT"
 
+#define GPUB01_NA_CVB_TABLE_HIOPT_EXTREME	\
+	.freqs_mult = KHZ,	\
+	.speedo_scale = 100,	\
+	.thermal_scale = 10,	\
+	.voltage_scale = 1000,	\
+	.cvb_table = {		\
+		/* f	   dfll pll:    c0,       c1,       c2,       c3,       c4,       c5 */    \
+		{   76800, { },  {  590000,        0,        0,        0,        0,        0 }, }, \
+		{  153600, { },  {  590000,        0,        0,        0,        0,        0 }, }, \
+		{  230400, { },  {  590000,        0,        0,        0,        0,        0 }, }, \
+		{  307200, { },  {  590000,        0,        0,        0,        0,        0 }, }, \
+		{  384000, { },  {  590000,        0,        0,        0,        0,        0 }, }, \
+		{  460800, { },  {  590000,        0,        0,        0,        0,        0 }, }, \
+		{  537600, { },  {  590000,        0,        0,        0,        0,        0 }, }, \
+		{  614400, { },  {  590000,        0,        0,        0,        0,        0 }, }, \
+		{  691200, { },  {  838712,    -7304,     -552,      119,    -3750,       -2 }, }, \
+		{  768000, { },  {  880210,    -7955,     -584,        0,    -2849,       39 }, }, \
+		{  844800, { },  {  926398,    -8892,     -602,      -60,     -384,      -93 }, }, \
+		{  921600, { },  {  970060,   -10108,     -614,     -179,     1508,      -13 }, }, \
+		{  998400, { },  { 1060665,   -16075,     -497,     -179,     3213,        9 }, }, \
+		{ 1075200, { },  { 1117576,   -16093,     -648,        0,     1077,       40 }, }, \
+		{ 1152000, { },  { 1094475,   -12688,     -648,        0,     1077,       40 }, }, \
+		{ 1228800, { },  { 1124475,   -12688,     -648,        0,     1077,       40 }, }, \
+		{ 1267200, { },  { 1145060,   -12688,     -648,        0,     1077,       40 }, }, \
+		{ 1305600, { },  { 1163644,   -12688,     -648,        0,     1077,       40 }, }, \
+		{ 0,	   { }, { }, }, \
+	}, \
+	.cvb_vmin = {   0, { }, {   590000,        0,        0 }, }, \
+	.cvb_version = "NAPLL En - p4v2-AggressiveHighOPT"
+
 static struct cvb_dvfs gpub01_cvb_dvfs_table[] = {
 	{
 		.speedo_id = 3,
@@ -917,6 +1026,30 @@ static struct cvb_dvfs gpub01_cvb_dvfs_table[] = {
 		.max_mv = 900,
 		.max_freq = 1305600,
 		GPUB01_NA_CVB_TABLE_HIOPT,
+	},
+	{
+		.speedo_id = 2,
+		.process_id = -1,
+		.max_mv = 1050,
+		.max_freq = 1267200,
+		GPUB01_NA_CVB_TABLE_SLT,
+	},
+	{
+		.speedo_id = -1,
+		.process_id = -1,
+		.max_mv = 1050,
+		.max_freq = 1267200,
+		GPUB01_NA_CVB_TABLE,
+	},
+};
+
+static struct cvb_dvfs gpub01_cvb_dvfs_table_extreme[] = {
+	{
+		.speedo_id = 3,
+		.process_id = -1,
+		.max_mv = 900,
+		.max_freq = 1305600,
+		GPUB01_NA_CVB_TABLE_HIOPT_EXTREME,
 	},
 	{
 		.speedo_id = 2,
@@ -948,6 +1081,10 @@ static const int gpub01emc_millivolts[MAX_DVFS_FREQS] = {
 	590, 600, 610, 620, 630, 640, 650, 660, 670, 680, 690, 700, 710, 720, 730, 740, 750, 765, 780
 };
 
+static const int gpub01emc_millivolts_extreme[MAX_DVFS_FREQS] = {
+	590, 600, 610, 620, 630, 640, 650, 660, 670, 680, 690, 700, 710, 720, 730, 740, 750, 765, 780
+};
+
 #define CORE_DVFS(_clk_name, _speedo_id, _process_id, _auto, _mult, _freqs...) \
 	{							\
 		.clk_name	= _clk_name,			\
@@ -973,12 +1110,33 @@ static const int gpub01emc_millivolts[MAX_DVFS_FREQS] = {
 		.dvfs_rail	= &vdd_gpu_rail,	\
 	}
 
+#define GPU_DVFS_EXTREME(_clk_name, _speedo_id, _process_id, _auto, _mult, _freqs...) \
+	{							\
+		.clk_name	= _clk_name,			\
+		.speedo_id	= _speedo_id,			\
+		.process_id	= _process_id,			\
+		.freqs		= {_freqs},			\
+		.freqs_mult	= _mult,			\
+		.millivolts	= gpub01emc_millivolts_extreme,		\
+		.auto_dvfs	= _auto,			\
+		.multi_rail	= true,				\
+		.dvfs_rail	= &vdd_gpu_rail,	\
+	}
+
 static struct dvfs gpub01_dvfs_table[] = {
 /* Per-bin Tables */
 	/* Gpu voltages(mV):		     590,  600,  610,  620,  630,  640,  650,  660,  670,  680,  690,  700,  710,  720,  730,  740,  750,  765,  780, */
 	GPU_DVFS("emc",	-1, 0, 1, MHZ,	2166, 2233, 2300, 2366, 2400, 2433, 2500, 2533, 2600, 2666, 2733, 2800, 2866, 2933, 3000, 3066, 3100, 3133, 3200),
 	GPU_DVFS("emc",	-1, 1, 1, MHZ,	2233, 2333, 2366, 2433, 2500, 2500, 2566, 2633, 2700, 2766, 2833, 2866, 2933, 3000, 3033, 3100, 3133, 3166,	3200),
 	GPU_DVFS("emc",	-1, 2, 1, MHZ,	2466, 2500, 2566, 2600, 2633, 2700, 2766, 2833, 2866, 2900, 2933, 2966, 3033, 3066, 3100, 3133, 3166, 3200, 3200),
+};
+
+static struct dvfs gpub01_dvfs_table_extreme[] = {
+/* Per-bin Tables */
+	/* Gpu voltages(mV):		 590,  600,  610,  620,  630,  640,  650,  660,  670,  680,  690,  700,  710,  720,  730,  740,  750,  765,  780, */
+	GPU_DVFS_EXTREME("emc",	-1, 0, 1, MHZ,	2166, 2233, 2300, 2366, 2400, 2433, 2500, 2533, 2600, 2666, 2733, 2800, 2866, 2933, 3000, 3066, 3100, 3133, 3200),
+	GPU_DVFS_EXTREME("emc",	-1, 1, 1, MHZ,	2233, 2333, 2366, 2433, 2500, 2500, 2566, 2633, 2700, 2766, 2833, 2866, 2933, 3000, 3033, 3100, 3133, 3166,	3200),
+	GPU_DVFS_EXTREME("emc",	-1, 2, 1, MHZ,	2466, 2500, 2566, 2600, 2633, 2700, 2766, 2833, 2866, 2900, 2933, 2966, 3033, 3066, 3100, 3133, 3166, 3200, 3200),
 };
 
 /* Include T210 core DVFS tables generated from characterization data */
@@ -1497,9 +1655,7 @@ static int get_coreb01_sku_max_mv(void)
 {
 	switch (tegra_sku_info.soc_process_id) {
 	case 0:
-		return 1050;
 	case 1:
-		return 1050;
 	case 2:
 		return 1050;
 	default:
@@ -1822,7 +1978,8 @@ static int init_gpu_rail_thermal_scaling(struct device_node *node,
 }
 
 /* cooling device to limit GPU frequenct based on the vmax thermal profile */
-#define GPU_MAX_RATE 1800000000UL
+#define GPU_MAX_RATE 1300000000UL
+#define GPU_MAX_RATE_EXTREME 1800000000UL
 static int gpu_dvfs_rail_get_vmax_cdev_max_state(
 	struct thermal_cooling_device *cdev, unsigned long *max_state)
 {
@@ -1848,7 +2005,7 @@ static int gpu_dvfs_rail_set_vmax_cdev_cur_state(
 {
 	struct dvfs_rail *rail = cdev->devdata;
 	int level = 0, err = -EINVAL;
-	unsigned long cap_rate = GPU_MAX_RATE;
+	unsigned long cap_rate = extreme_oc ? GPU_MAX_RATE_EXTREME : GPU_MAX_RATE;
 
 	if (cur_state)
 		level = rail->therm_caps[cur_state - 1].mv;
@@ -2343,6 +2500,38 @@ static struct tegra_dvfs_data tegra210b01slt_dvfs_data = {
 	.core_dvfs_ver = coreb01slt_dvfs_table_ver,
 };
 
+static struct tegra_dvfs_data tegra210b01slt_dvfs_data_extreme = {
+	.rails = tegra210b01_dvfs_rails,
+	.rails_num = ARRAY_SIZE(tegra210b01_dvfs_rails),
+	.cpu_fv_table = cpub01_fv_dvfs_table_extreme,
+	.cpu_fv_table_size = ARRAY_SIZE(cpub01_fv_dvfs_table_extreme),
+	.gpu_cvb_table = gpub01_cvb_dvfs_table_extreme,
+	.gpu_cvb_table_size = ARRAY_SIZE(gpub01_cvb_dvfs_table_extreme),
+	.gpu_vf_table = gpub01_dvfs_table_extreme,
+	.gpu_vf_table_size = ARRAY_SIZE(gpub01_dvfs_table_extreme),
+
+	.emc_dvb_table = emcb01slt_dvb_dvfs_table_extreme,
+	.emc_dvb_table_size = ARRAY_SIZE(emcb01slt_dvb_dvfs_table_extreme),
+
+	.core_mv = coreb01slt_voltages_mv,
+	.core_vf_table = coreb01slt_dvfs_table,
+	.core_vf_table_size = ARRAY_SIZE(coreb01slt_dvfs_table),
+	.spi_vf_table = spib01slt_dvfs_table,
+	.spi_slave_vf_table = spi_slaveb01slt_dvfs_table,
+	.qspi_sdr_vf_table = qspi_sdrb01slt_dvfs_table,
+	.qspi_ddr_vf_table = qspi_ddrb01slt_dvfs_table,
+	.sor1_dp_vf_table = sor1_dpb01slt_dvfs_table,
+	.sor1_dp_vf_table_size = ARRAY_SIZE(sor1_dpb01slt_dvfs_table),
+	.get_core_min_mv = get_coreb01slt_sku_min_mv,
+	.get_core_max_mv = get_coreb01slt_sku_max_mv,
+
+	.core_floors = tegra210b01_core_therm_floors,
+	.core_caps = tegra210b01_core_therm_caps,
+	.core_caps_ucm2 = tegra210b01_core_therm_caps_ucm2,
+
+	.core_dvfs_ver = coreb01slt_dvfs_table_ver,
+};
+
 static void disable_rail_scaling(struct device_node *np)
 {
 	/* With DFLL as clock source CPU rail scaling cannot be disabled */
@@ -2469,10 +2658,12 @@ int tegra210_init_dvfs(struct device *dev)
 
 int tegra210b01_init_dvfs(struct device *dev)
 {
+	extreme_oc = of_property_read_bool(dev->of_node, "allow-extreme-oc");
 	update_emc_override_dvb_dvfs(&tegra210b01_dvfs_data);
 
-	if (tegra_sku_info.soc_speedo_id == 2)
-		init_dvfs_data(&tegra210b01slt_dvfs_data);
+	dev_info(dev, "T210b01 DVFS: extreme OC %sallowed\n", extreme_oc ? "" : "not ");
+	if (tegra_sku_info.soc_speedo_id == 2 || tegra_sku_info.soc_speedo_id == 0)
+		init_dvfs_data(extreme_oc ? &tegra210b01slt_dvfs_data_extreme : &tegra210b01slt_dvfs_data);
 	else
 		init_dvfs_data(&tegra210b01_dvfs_data);
 
